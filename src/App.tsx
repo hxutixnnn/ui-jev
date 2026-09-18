@@ -19,21 +19,21 @@ const INSTANT_VERDICT: Verdict = {
   action: "render",
   template: "landing",
   density: "spacious",
-  sections: ["include_code", "include_testimonials"],
+  sections: [],
   confidence: 1,
   reasons: ["instant base render — Jev plan arriving"],
   probabilities: {},
 };
 
 export default function App() {
-  const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[1]);
+  const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[0]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [error, setError] = useState("");
   const [showJson, setShowJson] = useState(false);
   const reqId = useRef(0);
 
-  const instantSpec: Spec = useMemo(() => assembleSpec(INSTANT_VERDICT, EXAMPLE_PROMPTS[1]), []);
+  const instantSpec: Spec = useMemo(() => assembleSpec(INSTANT_VERDICT, EXAMPLE_PROMPTS[0]), []);
 
   const spec: Spec | null = useMemo(() => {
     if (!plan) return null;

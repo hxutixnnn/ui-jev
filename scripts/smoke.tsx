@@ -27,3 +27,40 @@ const prompt = catalog.prompt();
 console.log(`catalog.prompt length=${prompt.length} components=${catalog.componentNames.length}`);
 if (failed > 0) process.exit(1);
 console.log(`catalog smoke: ${verdicts.length}/${verdicts.length} specs valid`);
+
+// No hardcoded UI: every rendered string must trace to the prompt or verdict.
+import { EXAMPLE_PROMPTS } from "../src/templates";
+const FORBIDDEN = [
+  "Ada Lovelace",
+  "Grace Hopper",
+  "Alan Turing",
+  "24.8k",
+  "3.4%",
+  "Starter",
+  "Shipped in a day",
+  "Guardrails held",
+  "Beta team",
+  "Your numbers, live",
+  "Simple plans that scale",
+  "Sign in to continue",
+  "Everything in one table",
+  "Get started",
+  "Refresh data",
+  "Export report",
+  "Talk to sales",
+];
+const probePrompts = [...EXAMPLE_PROMPTS, "A quiet page with nothing special in it"];
+for (const p of probePrompts) {
+  for (const v of verdicts) {
+    // @ts-expect-error smoke shapes
+    const json = JSON.stringify(assembleSpec({ ...v, reasons: [] }, p));
+    for (const f of FORBIDDEN) {
+      // A string counts as hardcoded only if rendered WITHOUT being in the prompt.
+      if (json.includes(f) && !p.includes(f)) {
+        console.error(`HARDCODED LEAK: "${f}" rendered for prompt "${p}"`);
+        process.exit(1);
+      }
+    }
+  }
+}
+console.log(`no-hardcode check: ${probePrompts.length * verdicts.length} specs clean`);

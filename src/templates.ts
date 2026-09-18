@@ -22,85 +22,128 @@ function el(type: string, props: Record<string, unknown> = {}, children: string[
   return { type, props, children };
 }
 
+// --- Deterministic extractors: everything rendered comes from the prompt. ---
+
+function sentences(prompt: string): string[] {
+  return prompt
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim().replace(/^["“]+|["”]+$/g, ""))
+    .filter(Boolean);
+}
+
+function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+function short(prompt: string, n = 90): string {
+  return prompt.length > n ? `${prompt.slice(0, n)}…` : prompt;
+}
+
+const CTA_VERBS = [
+  "sign up",
+  "sign in",
+  "start",
+  "try",
+  "buy",
+  "get",
+  "view",
+  "add",
+  "download",
+  "subscribe",
+  "join",
+  "contact",
+  "learn",
+  "explore",
+  "shop",
+  "book",
+];
+
+function ctaLabel(prompt: string): string | null {
+  for (const v of CTA_VERBS) {
+    if (new RegExp(`\\b${v}\\b`, "i").test(prompt)) return cap(v);
+  }
+  return null;
+}
+
+function extractNumbers(prompt: string): { label: string; value: string }[] {
+  const re = /\$?\d[\d,]*(?:\.\d+)?\s?(?:%|[kmb](?![a-z])|\/mo)?/gi;
+  const out: { label: string; value: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prompt)) !== null && out.length < 4) {
+    const value = m[0].trim();
+    const before = prompt
+      .slice(0, m.index)
+      .trim()
+      .split(/\s+/)
+      .slice(-2)
+      .join(" ")
+      .replace(/[:\-–—,.()]+$/g, "");
+    out.push({ label: cap(before) || `Metric ${out.length + 1}`, value });
+  }
+  return out;
+}
+
+function extractListItems(prompt: string): string[] {
+  const parts = prompt
+    .split(/[,;]|\s+and\s+/i)
+    .map((s) => s.trim().replace(/^[^:;]{1,30}:\s*/, ""))
+    .filter((s) => s.length > 0);
+  return parts.length >= 2 ? parts.slice(0, 8) : [];
+}
+
+function extractQuotes(prompt: string): string[] {
+  const out: string[] = [];
+  const re = /["“]([^"”]+)["”]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prompt)) !== null && out.length < 4) out.push(m[1].trim());
+  return out;
+}
+
+const FORM_HINTS: [RegExp, string, string[]][] = [
+  [/\blog(in|ging)?\b|\bsign\s?in\b/i, "Login", ["Email", "Password"]],
+  [/\bsign\s?up\b|\bregister\b/i, "Signup", ["Name", "Email", "Password"]],
+  [/\bcontact\b/i, "Contact", ["Name", "Email", "Message"]],
+  [/\bsearch\b/i, "Search", ["Search"]],
+  [/\bsubscribe\b|\bnewsletter\b/i, "Subscribe", ["Email"]],
+];
+
 /**
  * Code owns the spec. Jev only picks the template + sections;
- * every element below is assembled deterministically in code.
+ * every string below is extracted from the prompt or the verdict.
+ * Sections with no supporting data in the prompt are omitted, never faked.
  */
 export function assembleSpec(verdict: Verdict, prompt: string): Spec {
   const elements: Record<string, El> = {};
-  const short = prompt.length > 90 ? `${prompt.slice(0, 90)}…` : prompt;
+  elements.nav = el("Nav", { brand: "ui-jev" });
 
   if (verdict.action === "refuse") {
     return {
       root: "page",
       elements: {
-        page: el("Page", { title: "Request held" }, ["nav", "alert", "foot"]),
-        nav: el("Nav", { brand: "ui-jev" }),
+        ...elements,
+        page: el("Page", { title: "held" }, ["nav", "alert"]),
         alert: el("Alert", {
           title: "Not rendered",
           message: verdict.reasons[0] ?? "Held by policy",
           tone: "error",
         }),
-        foot: el("Footer", { text: "ui-jev · Jev advises, code decides" }),
       },
     } as unknown as Spec;
   }
 
+  const [first, second] = sentences(prompt);
   const kids: string[] = ["nav", "hero"];
-  elements.nav = el("Nav", { brand: "ui-jev" });
-  elements.hero = el("Hero", heroFor(verdict.template, short));
+  const heroProps: Record<string, unknown> = {
+    eyebrow: verdict.template,
+    title: first ? cap(short(first, 80)) : verdict.template,
+  };
+  if (second) heroProps.subtitle = cap(short(second, 140));
+  const cta = ctaLabel(prompt);
+  if (cta) heroProps.primaryLabel = cta;
+  elements.hero = el("Hero", heroProps);
 
-  const gap = verdict.density === "compact" ? "sm" : verdict.density === "spacious" ? "lg" : "md";
-  const cols = verdict.density === "compact" ? 4 : 3;
-
-  if (verdict.sections.includes("include_metrics") || verdict.template === "dashboard") {
-    kids.push("metrics");
-    elements.metrics = el("Grid", { columns: cols, gap }, ["m1", "m2", "m3"]);
-    elements.m1 = el("Metric", { label: "Active users", value: "24.8k", change: "+12%" });
-    elements.m2 = el("Metric", { label: "Conversion", value: "3.4%", change: "+0.6pt" });
-    elements.m3 = el("Metric", { label: "Churn", value: "1.1%", change: "-0.2pt" });
-  }
-  if (verdict.sections.includes("include_table") || verdict.template === "table_list") {
-    kids.push("table");
-    elements.table = el("Table", {
-      caption: "Latest records",
-      columns: ["Name", "Plan", "Status"],
-      rows: [
-        ["Ada Lovelace", "Pro", "Active"],
-        ["Grace Hopper", "Team", "Trial"],
-        ["Alan Turing", "Free", "Churned"],
-      ],
-    });
-  }
-  if (verdict.sections.includes("include_pricing") || verdict.template === "pricing") {
-    kids.push("tiers");
-    elements.tiers = el("Grid", { columns: 3, gap }, ["t1", "t2", "t3"]);
-    elements.t1 = el("Card", { title: "Starter", description: "$0 — for side projects" });
-    elements.t2 = el("Card", { title: "Pro", description: "$20/mo — for serious builders" });
-    elements.t3 = el("Card", { title: "Team", description: "$99/mo — for companies" });
-  }
-  if (verdict.sections.includes("include_form") || verdict.template === "auth_form") {
-    kids.push("form");
-    elements.form = el("Card", { title: "Get started", description: "One input, one button — wired to catalog actions later." }, [
-      "cta",
-    ]);
-    elements.cta = el("Button", { label: "Continue", variant: "primary" });
-  }
-  if (verdict.sections.includes("include_code")) {
-    kids.push("code");
-    elements.code = el("CodeBlock", {
-      title: "Generated spec (excerpt)",
-      code: `{\n  "root": "page",\n  "template": "${verdict.template}"\n}`,
-    });
-  }
-  if (verdict.sections.includes("include_testimonials")) {
-    kids.push("proof");
-    elements.proof = el("Grid", { columns: 2, gap }, ["q1", "q2"]);
-    elements.q1 = el("Card", { title: "“Shipped in a day”", description: "— Beta team" });
-    elements.q2 = el("Card", { title: "“Guardrails held”", description: "— Platform team" });
-  }
   if (verdict.action === "review") {
-    kids.splice(2, 0, "flag");
+    kids.push("flag");
     elements.flag = el("Alert", {
       title: "Low confidence — review suggested",
       message: verdict.reasons[0] ?? "Jev was unsure",
@@ -108,61 +151,97 @@ export function assembleSpec(verdict: Verdict, prompt: string): Spec {
     });
   }
 
-  kids.push("foot");
-  elements.foot = el("Footer", { text: "ui-jev · Jev advises, code decides" });
-  elements.page = el("Page", { title: verdict.template }, kids);
+  const wants = (s: string) => verdict.sections.includes(s);
+  const numbers = extractNumbers(prompt);
+  const amounts = numbers.filter((n) => n.value.includes("$"));
 
+  if (wants("include_metrics") || verdict.template === "dashboard") {
+    const metrics = (verdict.template === "dashboard" ? numbers : numbers).slice(0, 3);
+    if (metrics.length > 0) {
+      const gap = verdict.density === "compact" ? "sm" : verdict.density === "spacious" ? "lg" : "md";
+      kids.push("metrics");
+      elements.metrics = el("Grid", { columns: metrics.length, gap }, metrics.map((_, i) => `m${i}`));
+      metrics.forEach((m, i) => {
+        elements[`m${i}`] = el("Metric", { label: m.label, value: m.value });
+      });
+    }
+  }
+
+  if (wants("include_table") || verdict.template === "table_list") {
+    const items = extractListItems(prompt);
+    if (items.length > 0) {
+      kids.push("table");
+      elements.table = el("Table", {
+        caption: short(prompt),
+        columns: ["Items"],
+        rows: items.map((item) => [item]),
+      });
+    }
+  }
+
+  if (wants("include_pricing") || verdict.template === "pricing") {
+    if (amounts.length > 0) {
+      kids.push("tiers");
+      elements.tiers = el(
+        "Grid",
+        { columns: Math.min(amounts.length, 3), gap: "md" },
+        amounts.map((_, i) => `t${i}`),
+      );
+      amounts.forEach((a, i) => {
+        elements[`t${i}`] = el("Card", { title: a.label || `Plan ${i + 1}`, description: a.value });
+      });
+    }
+  }
+
+  if (wants("include_form") || verdict.template === "auth_form") {
+    const hint = FORM_HINTS.find(([re]) => re.test(prompt));
+    kids.push("form");
+    if (hint) {
+      elements.form = el(
+        "Card",
+        { title: `${hint[1]} form`, description: hint[2].join(" · ") },
+        ["cta"],
+      );
+    } else {
+      elements.form = el("Card", { title: cap(short(first ?? "Form", 60)) }, ["cta"]);
+    }
+    elements.cta = el("Button", { label: cta ?? "Submit", variant: "primary" });
+  }
+
+  if (wants("include_code")) {
+    kids.push("code");
+    elements.code = el("CodeBlock", {
+      title: "Jev plan",
+      code: JSON.stringify(
+        { template: verdict.template, density: verdict.density, sections: verdict.sections },
+        null,
+        2,
+      ),
+    });
+  }
+
+  if (wants("include_testimonials")) {
+    const quotes = extractQuotes(prompt);
+    if (quotes.length > 0) {
+      kids.push("proof");
+      elements.proof = el(
+        "Grid",
+        { columns: Math.min(quotes.length, 2), gap: "md" },
+        quotes.map((_, i) => `q${i}`),
+      );
+      quotes.forEach((q, i) => {
+        elements[`q${i}`] = el("Card", { title: `“${q}”` });
+      });
+    }
+  }
+
+  elements.page = el("Page", { title: verdict.template }, kids);
   return { root: "page", elements } as unknown as Spec;
 }
 
-function heroFor(template: string, short: string): Record<string, unknown> {
-  switch (template) {
-    case "dashboard":
-      return {
-        eyebrow: "Dashboard",
-        title: "Your numbers, live",
-        subtitle: `Planned from: “${short}”`,
-        primaryLabel: "Refresh data",
-        secondaryLabel: "Export report",
-      };
-    case "pricing":
-      return {
-        eyebrow: "Pricing",
-        title: "Simple plans that scale",
-        subtitle: `Planned from: “${short}”`,
-        primaryLabel: "Start free",
-        secondaryLabel: "Talk to sales",
-      };
-    case "auth_form":
-      return {
-        eyebrow: "Welcome back",
-        title: "Sign in to continue",
-        subtitle: `Planned from: “${short}”`,
-        primaryLabel: "Continue",
-      };
-    case "table_list":
-      return {
-        eyebrow: "Records",
-        title: "Everything in one table",
-        subtitle: `Planned from: “${short}”`,
-        primaryLabel: "Add record",
-        secondaryLabel: "Filter",
-      };
-    default:
-      return {
-        eyebrow: "The Generative UI framework",
-        title: "AI → json-render → UI",
-        subtitle:
-          "Generate dynamic, personalized UIs from prompts without sacrificing reliability. Jev plans within guardrails; code renders.",
-        primaryLabel: "Get Started",
-        secondaryLabel: "GitHub",
-      };
-  }
-}
-
 export const EXAMPLE_PROMPTS = [
-  "A landing page for a developer tool with hero and code sample",
-  "A metrics dashboard with KPIs and a data table",
-  "Pricing tiers with FAQ-style social proof",
-  "A login form to get started",
+  "Startup launch: 24.8k signups, 3.4% conversion. Try the live demo",
+  "Pricing: Starter $0, Pro $20/mo, Team $99/mo",
+  "Team directory: Ada leads design, Grace owns infra, Alan reviews research",
+  "Sign up to get early access",
 ];
