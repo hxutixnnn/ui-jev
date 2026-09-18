@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { JSONUIProvider, Renderer } from "@json-render/react";
 import { catalog, registry, COMPONENT_NAMES } from "./catalog";
 import { assembleSpec, EXAMPLE_PROMPTS, type Spec, type Verdict } from "./templates";
@@ -14,26 +14,42 @@ type PlanResponse = {
 
 const INSTALL = "npm install @json-render/core @json-render/react";
 
+// Instant base spec: renders with zero network wait while Jev plans.
+const INSTANT_VERDICT: Verdict = {
+  action: "render",
+  template: "landing",
+  density: "spacious",
+  sections: ["include_code", "include_testimonials"],
+  confidence: 1,
+  reasons: ["instant base render — Jev plan arriving"],
+  probabilities: {},
+};
+
 export default function App() {
   const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[1]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [error, setError] = useState("");
   const [showJson, setShowJson] = useState(false);
+  const autoRan = useRef(false);
+
+  const instantSpec: Spec = useMemo(() => assembleSpec(INSTANT_VERDICT, prompt), []);
 
   const spec: Spec | null = useMemo(() => {
     if (!plan) return null;
     return assembleSpec(plan.verdict, plan.prompt);
   }, [plan]);
 
+  // What the playground shows right now: Jev-planned spec, else instant base.
+  const displaySpec: Spec = spec ?? instantSpec;
+
   const issues = useMemo(() => {
-    if (!spec) return null;
     try {
-      return catalog.validate(spec);
+      return catalog.validate(displaySpec);
     } catch {
       return null;
     }
-  }, [spec]);
+  }, [displaySpec]);
 
   async function generate() {
     setPhase("loading");
@@ -60,6 +76,14 @@ export default function App() {
     } catch {
       return "";
     }
+  }, []);
+
+  // Plan the default prompt on load so the Jev-planned UI arrives without a click.
+  useEffect(() => {
+    if (autoRan.current) return;
+    autoRan.current = true;
+    generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -129,37 +153,45 @@ export default function App() {
             </div>
           )}
 
-          {phase === "done" && plan && spec && (
-            <div className="result">
-              <div className="verdict">
-                <span className={`pill ${plan.verdict.action}`}>
-                  {plan.verdict.action} · {plan.verdict.template}
-                </span>
-                <span className="muted">conf {plan.verdict.confidence.toFixed(2)}</span>
-                <span className="muted">{plan.model}</span>
-                {plan.usage && (
-                  <span className="muted">
-                    {plan.usage.input_tokens} in / {plan.usage.output_tokens} out
+          <div className="result">
+            {plan ? (
+              <>
+                <div className="verdict">
+                  <span className={`pill ${plan.verdict.action}`}>
+                    {plan.verdict.action} · {plan.verdict.template}
                   </span>
-                )}
-                <button className="chip" onClick={() => setShowJson((v) => !v)}>
-                  {showJson ? "hide JSON" : "show JSON"}
-                </button>
-              </div>
-              <div className="muted small">{plan.verdict.reasons.join(" · ")}</div>
-              {issues && !issues.success && (
-                <div className="alert warn">
-                  <strong>Spec validation:</strong> {JSON.stringify(issues).slice(0, 200)}
+                  <span className="muted">conf {plan.verdict.confidence.toFixed(2)}</span>
+                  <span className="muted">{plan.model}</span>
+                  {plan.usage && (
+                    <span className="muted">
+                      {plan.usage.input_tokens} in / {plan.usage.output_tokens} out
+                    </span>
+                  )}
+                  <button className="chip" onClick={() => setShowJson((v) => !v)}>
+                    {showJson ? "hide JSON" : "show JSON"}
+                  </button>
                 </div>
-              )}
-              <div className="render-box">
-                <JSONUIProvider registry={registry} initialState={{}}>
-                  <Renderer spec={spec} registry={registry} />
-                </JSONUIProvider>
+                <div className="muted small">{plan.verdict.reasons.join(" · ")}</div>
+              </>
+            ) : (
+              <div className="verdict">
+                <span className="pill render">instant base</span>
+                <span className="muted">Jev plan arriving…</span>
               </div>
-              {showJson && <pre className="json">{JSON.stringify(spec, null, 2)}</pre>}
+            )}
+            {issues && !issues.success && (
+              <div className="alert warn">
+                <strong>Spec validation:</strong> {JSON.stringify(issues).slice(0, 200)}
+              </div>
+            )}
+            <div className={`render-box${phase === "loading" ? " planning" : ""}`}>
+              {phase === "loading" && <div className="plan-shimmer">Jev is planning…</div>}
+              <JSONUIProvider registry={registry} initialState={{}}>
+                <Renderer spec={displaySpec} registry={registry} />
+              </JSONUIProvider>
             </div>
-          )}
+            {showJson && plan && spec && <pre className="json">{JSON.stringify(spec, null, 2)}</pre>}
+          </div>
         </section>
 
         <section id="how" className="steps">
