@@ -1,0 +1,14 @@
+minimumReleaseAge: 2880
+engineStrict: true
+allowBuilds:
+  '@google/genai': false
+  "@mongodb-js/zstd": false
+  esbuild: false
+  msw: false
+  node-liblzma: false
+  protobufjs: false
+  sharp: false
+
+packages:
+  - "apps/*"
+  - "packages/*"
