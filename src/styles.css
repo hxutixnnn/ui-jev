@@ -94,5 +94,11 @@ a { color: inherit; }
 .jr-alert.info { background: #172554; }
 .jr-alert.warn { background: #2a2111; border: 1px solid var(--warn); }
 .jr-alert.error { background: #2a1215; border: 1px solid var(--error); }
+.jr-rating { background: #16161a; border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 10px; }
+.jr-stars { color: #fbbf24; font-size: 20px; letter-spacing: 2px; }
+.jr-progress { background: #16161a; border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.jr-bar { height: 8px; background: #26262b; border-radius: 999px; overflow: hidden; }
+.jr-fill { height: 100%; background: #4ade80; border-radius: 999px; }
+.jr-sep { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
 .jr-badge { background: #1c1c21; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .jr-footer { color: var(--muted); font-size: 13px; text-align: center; padding-top: 8px; }

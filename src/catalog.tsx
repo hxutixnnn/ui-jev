@@ -52,6 +52,26 @@ export const catalog = defineCatalog(schema, {
       }),
       description: "Key metric / stat display with large value",
     },
+    Rating: {
+      props: z.object({
+        label: z.string().optional(),
+        value: z.number(),
+        max: z.number().optional(),
+      }),
+      description: "Star rating display",
+    },
+    Progress: {
+      props: z.object({
+        label: z.string().optional(),
+        value: z.number(),
+        max: z.number().optional(),
+      }),
+      description: "Progress bar (value over max)",
+    },
+    Separator: {
+      props: z.object({}),
+      description: "Visual separator line",
+    },
     Table: {
       props: z.object({
         columns: z.array(z.string()),
@@ -132,6 +152,34 @@ const components: Components<Catalog> = {
       {props.change ? <span className="jr-metric-change">{props.change}</span> : null}
     </div>
   ),
+  Rating: ({ props }) => {
+    const max = props.max ?? 5;
+    const full = Math.round(props.value);
+    return (
+      <div className="jr-rating">
+        {props.label ? <span className="jr-metric-label">{props.label}</span> : null}
+        <span className="jr-stars">
+          {"★".repeat(Math.min(full, max))}
+          {"☆".repeat(Math.max(max - Math.min(full, max), 0))}
+        </span>
+        <span className="jr-muted">{props.value}</span>
+      </div>
+    );
+  },
+  Progress: ({ props }) => {
+    const max = props.max ?? 100;
+    const pct = Math.min(100, Math.max(0, (props.value / max) * 100));
+    return (
+      <div className="jr-progress">
+        {props.label ? <span className="jr-metric-label">{props.label}</span> : null}
+        <div className="jr-bar">
+          <div className="jr-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="jr-muted">{props.value}%</span>
+      </div>
+    );
+  },
+  Separator: () => <hr className="jr-sep" />,
   Table: ({ props }) => (
     <div className="jr-table-wrap">
       {props.caption ? <div className="jr-caption">{props.caption}</div> : null}

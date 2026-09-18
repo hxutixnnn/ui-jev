@@ -25,9 +25,11 @@ function el(type: string, props: Record<string, unknown> = {}, children: string[
 // --- Deterministic extractors: everything rendered comes from the prompt. ---
 
 function sentences(prompt: string): string[] {
+  // Split on sentence-ending punctuation only when followed by a capital
+  // letter or end-of-string, so decimals like "4.8" survive intact.
   return prompt
-    .split(/[.!?\n]+/)
-    .map((s) => s.trim().replace(/^["“]+|["”]+$/g, ""))
+    .split(/(?:[.!?]+(?=\s+[A-Z]|$))|[\n]+/)
+    .map((s) => s.trim().replace(/^["“]+|["”.,;]+$/g, ""))
     .filter(Boolean);
 }
 
@@ -65,14 +67,20 @@ function ctaLabel(prompt: string): string | null {
   return null;
 }
 
-function extractNumbers(prompt: string): { label: string; value: string }[] {
+function extractNumbers(
+  prompt: string,
+  skip: [number, number][] = [],
+): { label: string; value: string }[] {
   const re = /\$?\d[\d,]*(?:\.\d+)?\s?(?:%|[kmb](?![a-z])|\/mo)?/gi;
   const out: { label: string; value: string }[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(prompt)) !== null && out.length < 4) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (skip.some(([s, e]) => start < e && end > s)) continue;
     const value = m[0].trim();
     const before = prompt
-      .slice(0, m.index)
+      .slice(0, start)
       .trim()
       .split(/\s+/)
       .slice(-2)
@@ -83,8 +91,51 @@ function extractNumbers(prompt: string): { label: string; value: string }[] {
   return out;
 }
 
+function extractRating(prompt: string): { label: string; value: number; span: [number, number] } | null {
+  const re = /(\d(?:\.\d+)?)\s?(?:stars?|★)|(?:rating|rated)\s?(\d(?:\.\d+)?)/i;
+  const m = re.exec(prompt);
+  if (!m) return null;
+  const value = parseFloat(m[1] ?? m[2]);
+  const before = prompt
+    .slice(0, m.index)
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .join(" ")
+    .replace(/[:\-–—,.()]+$/g, "");
+  return { label: cap(before) || "Rating", value, span: [m.index, m.index + m[0].length] };
+}
+
+const PROGRESS_WORDS = /complet|done|clos|progress|retention|goal|shipped|capacit|deals|retained/i;
+
+function extractProgress(prompt: string): { label: string; value: number; span: [number, number] }[] {
+  const re = /(\d{1,3})\s?%/g;
+  const out: { label: string; value: number; span: [number, number] }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prompt)) !== null && out.length < 3) {
+    const context = `${prompt.slice(Math.max(0, m.index - 24), m.index)} ${prompt.slice(m.index + m[0].length, m.index + m[0].length + 16)}`;
+    if (!PROGRESS_WORDS.test(context)) continue;
+    const label = prompt
+      .slice(Math.max(0, m.index - 24), m.index)
+      .trim()
+      .split(/\s+/)
+      .slice(-2)
+      .join(" ")
+      .replace(/[:\-–—,.()]+$/g, "");
+    out.push({
+      label: cap(label) || "Progress",
+      value: Math.min(100, parseInt(m[1], 10)),
+      span: [m.index, m.index + m[0].length],
+    });
+  }
+  return out;
+}
+
 function extractListItems(prompt: string): string[] {
-  const parts = prompt
+  // List items come from the first sentence only — later sentences are
+  // hero subtitle / CTA, not table rows.
+  const first = sentences(prompt)[0] ?? prompt;
+  const parts = first
     .split(/[,;]|\s+and\s+/i)
     .map((s) => s.trim().replace(/^[^:;]{1,30}:\s*/, ""))
     .filter((s) => s.length > 0);
@@ -152,11 +203,35 @@ export function assembleSpec(verdict: Verdict, prompt: string): Spec {
   }
 
   const wants = (s: string) => verdict.sections.includes(s);
-  const numbers = extractNumbers(prompt);
+  const rating = extractRating(prompt);
+  const progress = extractProgress(prompt);
+  const consumed: [number, number][] = [
+    ...(rating ? [rating.span] : []),
+    ...progress.map((p) => p.span),
+  ];
+  const numbers = extractNumbers(prompt, consumed);
   const amounts = numbers.filter((n) => n.value.includes("$"));
+  const showTiers = (wants("include_pricing") || verdict.template === "pricing") && amounts.length > 0;
+  // $-amounts shown as tiers are not repeated as metrics.
+  const metricPool = showTiers ? numbers.filter((n) => !n.value.includes("$")) : numbers;
 
-  if (wants("include_metrics") || verdict.template === "dashboard") {
-    const metrics = (verdict.template === "dashboard" ? numbers : numbers).slice(0, 3);
+  if (rating || progress.length > 0) {
+    if (wants("include_rating") || wants("include_progress") || verdict.template === "dashboard") {
+      kids.push("highlights");
+      const cols: string[] = [];
+      if (rating) {
+        cols.push("rate");
+        elements.rate = el("Rating", { label: rating.label, value: rating.value, max: 5 });
+      }
+      progress.forEach((p, i) => {
+        cols.push(`prog${i}`);
+        elements[`prog${i}`] = el("Progress", { label: p.label, value: p.value, max: 100 });
+      });
+      elements.highlights = el("Grid", { columns: Math.min(cols.length, 2), gap: "md" }, cols);
+    }
+  }
+
+  if (wants("include_metrics") || verdict.template === "dashboard" || verdict.template === "table_list") {    const metrics = metricPool.slice(0, 3);
     if (metrics.length > 0) {
       const gap = verdict.density === "compact" ? "sm" : verdict.density === "spacious" ? "lg" : "md";
       kids.push("metrics");
@@ -240,8 +315,8 @@ export function assembleSpec(verdict: Verdict, prompt: string): Spec {
 }
 
 export const EXAMPLE_PROMPTS = [
-  "Startup launch: 24.8k signups, 3.4% conversion. Try the live demo",
-  "Pricing: Starter $0, Pro $20/mo, Team $99/mo",
-  "Team directory: Ada leads design, Grace owns infra, Alan reviews research",
-  "Sign up to get early access",
+  "Recipe card: Margherita pizza, 4.8 stars, tomato, mozzarella, basil. Try it tonight",
+  "Order receipt: 2x Margherita $12, 1x Tiramisu $8, total $20",
+  "Team performance dashboard: $12,400 revenue up 18%, deals 72% closed, retention 91%",
+  "Inbox: deploy done, review requested, backup complete",
 ];

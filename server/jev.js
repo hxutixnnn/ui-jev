@@ -44,6 +44,8 @@ export function buildJevRequest(prompt) {
     include_form: noul("The page should include an input form (signup/login/contact)."),
     include_code: noul("The page should show a code sample block."),
     include_testimonials: noul("The page should show testimonial or logo/social-proof content."),
+    include_rating: noul("The page should show a star rating."),
+    include_progress: noul("The page should show progress bars or completion percentages."),
     content_depth: score("How much content does this request need?", [
       "Minimal: single message or tiny card",
       "Small: one section with a few elements",

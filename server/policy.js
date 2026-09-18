@@ -13,6 +13,8 @@ const SECTIONS = [
   "include_form",
   "include_code",
   "include_testimonials",
+  "include_rating",
+  "include_progress",
 ];
 
 /**

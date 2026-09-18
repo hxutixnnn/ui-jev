@@ -2,7 +2,7 @@
 
 AI-generated UI in the style of [json-render.dev](https://json-render.dev/): **Jev plans, json-render renders.**
 
-- `src/catalog.tsx` — guardrailed catalog: 12 components (`Page`, `Nav`, `Hero`, `Button`, `Grid`, `Card`, `Metric`, `Table`, `CodeBlock`, `Alert`, `Badge`, `Footer`)
+- `src/catalog.tsx` — guardrailed catalog: 15 components (`Page`, `Nav`, `Hero`, `Button`, `Grid`, `Card`, `Metric`, `Rating`, `Progress`, `Separator`, `Table`, `CodeBlock`, `Alert`, `Badge`, `Footer`)
 - `server/jev.js` — live Jev planner: one speculative fan-out call (template + density + section Nouls + safety Nouls + depth Score)
 - `server/policy.js` — code-owned policy: `render` / `review` / `refuse` with fail-closed thresholds
 - `src/templates.ts` — code assembles the json-render spec; the model never writes JSON
