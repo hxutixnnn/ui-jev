@@ -3,7 +3,10 @@ import { diffToPatches, type Spec } from "@json-render/core";
 import { composeUI } from "./compose";
 import { checkSafety } from "./safety";
 
-const inputSchema = z.object({ prompt: z.string().trim().min(1).max(1000) });
+const inputSchema = z.object({
+  prompt: z.string().trim().min(1).max(1000),
+  history: z.string().max(4000).optional(),
+});
 const previousSpecSchema = z
   .object({
     root: z.string().min(1),
@@ -26,8 +29,9 @@ export async function createCompositionResponse(
   request: Request,
   prompt: unknown,
   previousSpec?: unknown,
+  history?: unknown,
 ) {
-  const input = inputSchema.safeParse({ prompt });
+  const input = inputSchema.safeParse({ prompt, history });
   if (!input.success)
     return Response.json(
       { error: "Enter a request between 1 and 1,000 characters." },
@@ -88,6 +92,7 @@ export async function createCompositionResponse(
           signal,
           undefined,
           initialSpec,
+          input.data.history ?? "",
         )) {
           if (event.type === "error") throw new Error(event.message);
           if (event.type === "step") {

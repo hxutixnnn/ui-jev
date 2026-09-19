@@ -402,9 +402,13 @@ export function Playground() {
     setSelectedVersionId(newVersionId);
     setInputValue("");
 
-    // Pass the current tree as context so the API can iterate on it
-    await send(inputValue.trim(), { previousSpec: currentTreeRef.current });
-  }, [inputValue, isStreaming, send, format, model]);
+    // Pass the current tree and conversation history as context so the
+    // API can iterate on it and restore content introduced earlier.
+    await send(inputValue.trim(), {
+      previousSpec: currentTreeRef.current,
+      history: versions.map((v) => v.prompt),
+    });
+  }, [inputValue, isStreaming, send, format, model, versions]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

@@ -35,5 +35,9 @@ export async function POST(req: Request) {
   }
 
   const { prompt, context } = await req.json();
-  return createCompositionResponse(req, prompt, context?.previousSpec);
+  const rawHistory: unknown = context?.history;
+  const history = Array.isArray(rawHistory)
+    ? rawHistory.filter((p): p is string => typeof p === "string").join("\n").slice(0, 4000)
+    : undefined;
+  return createCompositionResponse(req, prompt, context?.previousSpec, history);
 }

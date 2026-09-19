@@ -6,7 +6,7 @@ import {
   type Spec,
 } from "@json-render/core";
 import { playgroundCatalog } from "../render/catalog";
-import { buildCandidates, MAX_ELEMENTS } from "./candidates";
+import { buildCandidates, buildCandidatesFromSpec, MAX_ELEMENTS } from "./candidates";
 import { createDirectEvaluator } from "./direct-evaluator";
 
 export type Evaluate = Experimental_CompositionEvaluator;
@@ -24,8 +24,16 @@ export async function* composeUI(
   signal: AbortSignal,
   evaluate: Evaluate = createDirectEvaluator(),
   initialSpec?: Spec,
+  history = "",
 ): AsyncGenerator<CompositionEvent> {
-  const { candidates, initialState } = buildCandidates(prompt);
+  const { candidates: promptCandidates, initialState } = buildCandidates(prompt, history);
+  // Follow-ups reference already-built content, so offer it back as recipes
+  // alongside prompt-derived candidates. Same-resource entries compete and
+  // only one is selected. Spec-derived recipes go first: evaluators favor
+  // earlier options, and restoring existing content is the common follow-up.
+  const candidates = initialSpec
+    ? [...buildCandidatesFromSpec(initialSpec), ...promptCandidates]
+    : promptCandidates;
   for await (const event of experimental_composeSpec({
     catalog: playgroundCatalog,
     candidates,
