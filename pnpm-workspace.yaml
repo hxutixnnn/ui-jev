@@ -11,4 +11,7 @@ allowBuilds:
 
 packages:
   - "apps/*"
+  - "examples/*"
+  - "examples/stripe-app/*"
   - "packages/*"
+  - "tests/*"
